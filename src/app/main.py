@@ -11,7 +11,12 @@ app = FastAPI(title="Green DevOps FastAPI Baseline")
 @app.on_event("startup")
 def on_startup():
     init_db()
-
+    
+@app.on_event("startup")
+def ensure_db():
+    from .db import init_db
+    init_db()
+    
 @app.get("/health")
 def health():
     return {"status": "ok"}
