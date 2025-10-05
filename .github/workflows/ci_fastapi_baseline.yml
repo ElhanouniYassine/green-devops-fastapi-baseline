@@ -1,0 +1,51 @@
+name: CI Baseline (FastAPI)
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Prepare metrics dir
+        run: mkdir -p metrics
+
+      - name: Install dependencies (baseline, no caching)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -U pip 2>/dev/null || true
+          /usr/bin/time -v pip install -r requirements.txt 2>&1 | tee metrics/pip_install.txt
+
+      - name: Run tests (baseline)
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          /usr/bin/time -v pytest -q --maxfail=1 --disable-warnings 2>&1 | tee metrics/pytest_baseline.txt || true
+
+      - name: Write run metadata
+        shell: bash
+        run: |
+          {
+            echo "date=$(date -Is)"
+            echo "runner_os=${{ runner.os }}"
+            echo "runner_arch=${{ runner.arch }}"
+            echo "github_run_id=${{ github.run_id }}"
+            echo "github_sha=${{ github.sha }}"
+            echo "github_ref_name=${{ github.ref_name }}"
+          } > metrics/run_meta.txt
+
+      - name: Upload metrics artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-baseline
+          path: metrics/
