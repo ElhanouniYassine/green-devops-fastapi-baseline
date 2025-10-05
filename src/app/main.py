@@ -1,22 +1,14 @@
-
 from __future__ import annotations
 from fastapi import FastAPI, HTTPException, Depends
-from sqlmodel import select
+from sqlmodel import select, Session
 from .models import Item
 from .db import init_db, get_session
-from sqlmodel import Session
+
+# Ensure DB is created at import time — covers both server & tests
+init_db()
 
 app = FastAPI(title="Green DevOps FastAPI Baseline")
 
-@app.on_event("startup")
-def on_startup():
-    init_db()
-    
-@app.on_event("startup")
-def ensure_db():
-    from .db import init_db
-    init_db()
-    
 @app.get("/health")
 def health():
     return {"status": "ok"}
