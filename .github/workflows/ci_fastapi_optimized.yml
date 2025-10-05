@@ -6,7 +6,6 @@ on:
 
 jobs:
   optimized:
-    # Run inside a lightweight container to reduce environment setup overhead
     container:
       image: python:3.11-slim
     runs-on: ubuntu-latest
@@ -14,6 +13,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Install /usr/bin/time inside the slim container
+      - name: Install timing tool
+        run: |
+          apt-get update
+          apt-get install -y time
+          /usr/bin/time --version || true
 
       # Cache pip directory (wheel + http cache)
       - name: Get pip cache dir
@@ -46,7 +52,6 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install -U pip
-          # Install deps + pytest-testmon
           /usr/bin/time -v pip install -r requirements.txt pytest-testmon 2>&1 | tee metrics/pip_install.txt
 
       - name: Run selective tests (pytest-testmon)
