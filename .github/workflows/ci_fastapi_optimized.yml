@@ -1,0 +1,84 @@
+name: CI Optimized (FastAPI)
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  optimized:
+    # Run inside a lightweight container to reduce environment setup overhead
+    container:
+      image: python:3.11-slim
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Cache pip directory (wheel + http cache)
+      - name: Get pip cache dir
+        id: pip-cache
+        run: echo "dir=$(python -m pip cache dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pip-cache.outputs.dir }}
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      # Cache pytest-testmon data (selective test runs)
+      - name: Cache pytest-testmon state
+        uses: actions/cache@v4
+        with:
+          path: .testmondata
+          key: testmon-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            testmon-${{ github.ref }}-
+            testmon-
+
+      - name: Prepare metrics dir
+        run: mkdir -p metrics
+
+      - name: Install dependencies (with caching)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -U pip
+          # Install deps + pytest-testmon
+          /usr/bin/time -v pip install -r requirements.txt pytest-testmon 2>&1 | tee metrics/pip_install.txt
+
+      - name: Run selective tests (pytest-testmon)
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          echo ">>> Running selective tests with pytest-testmon"
+          /usr/bin/time -v pytest -q --testmon --maxfail=1 --disable-warnings 2>&1 | tee metrics/pytest_baseline.txt || true
+
+          # If nothing collected (first run, cold cache) → full run
+          if ! grep -q "collected" metrics/pytest_baseline.txt; then
+            echo ">>> No testmon cache, running full test suite..."
+            /usr/bin/time -v pytest -q --maxfail=1 --disable-warnings 2>&1 | tee -a metrics/pytest_baseline.txt || true
+          fi
+
+      - name: Write run metadata
+        shell: bash
+        run: |
+          {
+            echo "date=$(date -Is)"
+            echo "runner_os=${{ runner.os }}"
+            echo "runner_arch=${{ runner.arch }}"
+            echo "github_run_id=${{ github.run_id }}"
+            echo "github_sha=${{ github.sha }}"
+            echo "github_ref_name=${{ github.ref_name }}"
+            echo "container_image=python:3.11-slim"
+          } > metrics/run_meta.txt
+
+      - name: Upload metrics artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-optimized
+          path: metrics/
