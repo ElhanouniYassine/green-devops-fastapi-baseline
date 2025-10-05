@@ -6,25 +6,21 @@ on:
 
 jobs:
   optimized:
-    container:
-      image: python:3.11-slim
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Install /usr/bin/time inside the slim container
-      - name: Install timing tool
-        run: |
-          apt-get update
-          apt-get install -y time
-          /usr/bin/time --version || true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-      # Cache pip directory (wheel + http cache)
-      - name: Get pip cache dir
+      - name: Prepare pip cache directory
         id: pip-cache
-        run: echo "dir=$(python -m pip cache dir)" >> $GITHUB_OUTPUT
+        run: |
+          echo "dir=$(pip cache dir)" >> $GITHUB_OUTPUT
 
       - name: Cache pip
         uses: actions/cache@v4
@@ -34,8 +30,7 @@ jobs:
           restore-keys: |
             pip-${{ runner.os }}-
 
-      # Cache pytest-testmon data (selective test runs)
-      - name: Cache pytest-testmon state
+      - name: Cache pytest-testmon data
         uses: actions/cache@v4
         with:
           path: .testmondata
@@ -44,14 +39,14 @@ jobs:
             testmon-${{ github.ref }}-
             testmon-
 
-      - name: Prepare metrics dir
+      - name: Prepare metrics directory
         run: mkdir -p metrics
 
       - name: Install dependencies (with caching)
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install -U pip
+          /usr/bin/time -v pip install -U pip
           /usr/bin/time -v pip install -r requirements.txt pytest-testmon 2>&1 | tee metrics/pip_install.txt
 
       - name: Run selective tests (pytest-testmon)
@@ -63,14 +58,12 @@ jobs:
           echo ">>> Running selective tests with pytest-testmon"
           /usr/bin/time -v pytest -q --testmon --maxfail=1 --disable-warnings 2>&1 | tee metrics/pytest_baseline.txt || true
 
-          # If nothing collected (first run, cold cache) → full run
           if ! grep -q "collected" metrics/pytest_baseline.txt; then
             echo ">>> No testmon cache, running full test suite..."
             /usr/bin/time -v pytest -q --maxfail=1 --disable-warnings 2>&1 | tee -a metrics/pytest_baseline.txt || true
           fi
 
       - name: Write run metadata
-        shell: bash
         run: |
           {
             echo "date=$(date -Is)"
@@ -79,7 +72,7 @@ jobs:
             echo "github_run_id=${{ github.run_id }}"
             echo "github_sha=${{ github.sha }}"
             echo "github_ref_name=${{ github.ref_name }}"
-            echo "container_image=python:3.11-slim"
+            echo "environment=ubuntu-latest"
           } > metrics/run_meta.txt
 
       - name: Upload metrics artifact
