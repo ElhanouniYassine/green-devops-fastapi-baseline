@@ -19,3 +19,17 @@ black>=24.8
 # fastapi security helpers (for simple bearer auth below)
 python-multipart>=0.0.9
 
+# observability
+prometheus-client>=0.20
+structlog>=24.1
+opentelemetry-sdk>=1.27
+opentelemetry-instrumentation-fastapi>=0.48b0
+opentelemetry-instrumentation-asgi>=0.48b0
+
+# green metrics
+codecarbon>=2.5
+
+# packaging for docker runtime
+uvicorn>=0.30
+
+
