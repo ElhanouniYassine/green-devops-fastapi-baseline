@@ -47,3 +47,12 @@ Base path: `/api/v1`
 
 ## Next steps
 Use this repo as your **baseline**. We'll then apply optimizations (caching, selective tests, minimal containers) and compare the metrics.
+
+## Quality Gates
+- **Lint:** Ruff, Black (check mode)
+- **Type:** mypy (strict-ish)
+- **Tests:** pytest with coverage; gate at **85%**
+- **Property-based tests:** Hypothesis explores name/price domains
+- **Performance:** pytest-benchmark producing `bench.json` artifact
+- **Auth:** All `/api/v1/*` require `Authorization: Bearer <token>`; default token in dev/CI is `devtoken`, or fetch via `POST /auth/token`
+
