@@ -1,0 +1,11 @@
+.git
+__pycache__/
+*.pyc
+.venv
+venv
+dist
+build
+.coverage
+bench.json
+metrics-*
+reports/*
