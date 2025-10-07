@@ -27,5 +27,23 @@ pytest -q
 - `GET /items` → list items
 - `GET /items/{item_id}` → fetch item by id
 
+  ## API (v1)
+
+Base path: `/api/v1`
+
+- `POST /items` → create item (body: `{name, price>=0}`)  
+  - 201, returns `ItemRead`
+  - 409 if `name` not unique
+- `GET /items/{id}` → fetch one
+- `PATCH /items/{id}` → partial update (body: `{name?, price?}`)
+  - 409 on unique-name violation
+- `GET /items` → list with filters  
+  - Query params:
+    - `min_price` (>=0), `max_price` (>=0)
+    - `q` (substring of name)
+    - `limit` [1..200], `offset` [0..]
+    - `order_by` in `{id,name,price}`, `direction` in `{asc,desc}`
+
+
 ## Next steps
 Use this repo as your **baseline**. We'll then apply optimizations (caching, selective tests, minimal containers) and compare the metrics.
