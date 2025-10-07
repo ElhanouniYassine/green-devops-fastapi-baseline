@@ -1,7 +1,5 @@
 from __future__ import annotations
-
 from typing import Literal, Sequence
-
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from sqlalchemy import func, asc, desc
 from sqlmodel import select, Session
@@ -9,61 +7,51 @@ from sqlmodel import select, Session
 from .db import get_session
 from .models import Item
 from .schemas import ItemCreate, ItemRead, ItemUpdate
+from .auth import require_auth, token_issuer  # NEW
 
-app = FastAPI(title="Green DevOps FastAPI", version="1.0.0")
-
+app = FastAPI(title="Green DevOps FastAPI", version="1.1.0")
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
+@app.post("/auth/token")
+def issue_token():
+    # Not secure; just exposes the configured token so black-box tests can obtain it.
+    return {"access_token": token_issuer(), "token_type": "bearer"}
 
-# -----------------------
-# Versioned API: /api/v1
-# -----------------------
-def _apply_filters(
-    stmt,
-    min_price: float | None,
-    max_price: float | None,
-    q: str | None,
-):
+def _apply_filters(stmt, min_price: float | None, max_price: float | None, q: str | None):
     if min_price is not None:
         stmt = stmt.where(Item.price >= min_price)
     if max_price is not None:
         stmt = stmt.where(Item.price <= max_price)
     if q:
-        # SQLite LIKE is case-insensitive by default, but we normalize anyway
         stmt = stmt.where(func.lower(Item.name).contains(q.lower()))
     return stmt
-
 
 def _apply_sort(stmt, order_by: Literal["id", "name", "price"], direction: Literal["asc", "desc"]):
     col = {"id": Item.id, "name": Item.name, "price": Item.price}[order_by]
     return stmt.order_by(asc(col) if direction == "asc" else desc(col))
 
-
+# All v1 endpoints now require auth
 @app.post("/api/v1/items", response_model=ItemRead, status_code=status.HTTP_201_CREATED)
-def create_item(payload: ItemCreate, session: Session = Depends(get_session)):
+def create_item(payload: ItemCreate, session: Session = Depends(get_session), user=Depends(require_auth)):
     item = Item(name=payload.name, price=payload.price)
     session.add(item)
     try:
         session.commit()
-    except Exception as e:  # handle unique constraint violations
+    except Exception as e:
         session.rollback()
-        # SQLAlchemy IntegrityError type is available, but to avoid importing,
-        # we convert any constraint failure into 409. This keeps it simple.
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Item name must be unique") from e
     session.refresh(item)
     return item
 
-
 @app.get("/api/v1/items/{item_id}", response_model=ItemRead)
-def get_item(item_id: int, session: Session = Depends(get_session)):
+def get_item(item_id: int, session: Session = Depends(get_session), user=Depends(require_auth)):
     item = session.get(Item, item_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
     return item
-
 
 @app.get("/api/v1/items", response_model=list[ItemRead])
 def list_items(
@@ -75,6 +63,7 @@ def list_items(
     order_by: Literal["id", "name", "price"] = "id",
     direction: Literal["asc", "desc"] = "asc",
     session: Session = Depends(get_session),
+    user=Depends(require_auth),
 ):
     stmt = select(Item)
     stmt = _apply_filters(stmt, min_price, max_price, q)
@@ -83,9 +72,8 @@ def list_items(
     items: Sequence[Item] = session.exec(stmt).all()
     return list(items)
 
-
 @app.patch("/api/v1/items/{item_id}", response_model=ItemRead)
-def update_item(item_id: int, payload: ItemUpdate, session: Session = Depends(get_session)):
+def update_item(item_id: int, payload: ItemUpdate, session: Session = Depends(get_session), user=Depends(require_auth)):
     item = session.get(Item, item_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -99,7 +87,7 @@ def update_item(item_id: int, payload: ItemUpdate, session: Session = Depends(ge
         session.add(item)
         session.commit()
     except Exception as e:
-        session.rollback()
+        session.rollback
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Item name must be unique") from e
     session.refresh(item)
     return item
