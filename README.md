@@ -56,3 +56,19 @@ Use this repo as your **baseline**. We'll then apply optimizations (caching, sel
 - **Performance:** pytest-benchmark producing `bench.json` artifact
 - **Auth:** All `/api/v1/*` require `Authorization: Bearer <token>`; default token in dev/CI is `devtoken`, or fetch via `POST /auth/token`
 
+## Observability
+- **Prometheus**: `/metrics` exposes `http_requests_total`, `http_request_latency_seconds`, `http_requests_in_flight`.
+- **Structured logs**: JSON via structlog, include `request_id`.
+- **Request IDs**: responses include `X-Request-ID`.
+- **Tracing**: OpenTelemetry configured to **console exporter** in dev/CI.
+
+## Green Metrics
+- **CodeCarbon** tracks CO₂e for `pip install` and test execution on CI.
+- Artifacts: `metrics-optimized/emissions_install.csv`, `emissions_tests.csv`, and JSON summaries.
+
+## Docker
+```bash
+docker build -t green-devops:local .
+docker run -p 8000:8000 green-devops:local
+# open http://localhost:8000/docs and http://localhost:8000/metrics
+
