@@ -1,82 +1,84 @@
-name: CI Optimized (FastAPI)
+name: CI (FastAPI Optimized + Emissions)
 
 on:
   push:
+    branches: [ main ]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   optimized:
     runs-on: ubuntu-latest
-
+    env:
+      PYTHONUNBUFFERED: "1"
+      API_TOKEN: devtoken
+      CODECARBON_COUNTRY: MA
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Prepare pip cache directory
-        id: pip-cache
-        run: |
-          echo "dir=$(pip cache dir)" >> $GITHUB_OUTPUT
-
       - name: Cache pip
         uses: actions/cache@v4
         with:
-          path: ${{ steps.pip-cache.outputs.dir }}
-          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
-            pip-${{ runner.os }}-
+            ${{ runner.os }}-pip-
 
-      - name: Cache pytest-testmon data
-        uses: actions/cache@v4
-        with:
-          path: .testmondata
-          key: testmon-${{ github.ref }}-${{ github.sha }}
-          restore-keys: |
-            testmon-${{ github.ref }}-
-            testmon-
-
-      - name: Prepare metrics directory
-        run: mkdir -p metrics
-
-      - name: Install dependencies (with caching)
-        shell: bash
+      - name: Install deps (get tracker + project)
         run: |
-          set -euo pipefail
-          /usr/bin/time -v pip install -U pip
-          /usr/bin/time -v pip install -r requirements.txt pytest-testmon 2>&1 | tee metrics/pip_install.txt
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Run selective tests (pytest-testmon)
-        shell: bash
-        env:
-          PYTHONPATH: src
+      # Track install emissions by running pip again inside the tracker
+      - name: Emissions — install
         run: |
-          set -euo pipefail
-          echo ">>> Running selective tests with pytest-testmon"
-          /usr/bin/time -v pytest -q --testmon --maxfail=1 --disable-warnings 2>&1 | tee metrics/pytest_baseline.txt || true
+          python tools/run_with_emissions.py --label install --outdir metrics-optimized -- pip install -r requirements.txt
 
-          if ! grep -q "collected" metrics/pytest_baseline.txt; then
-            echo ">>> No testmon cache, running full test suite..."
-            /usr/bin/time -v pytest -q --maxfail=1 --disable-warnings 2>&1 | tee -a metrics/pytest_baseline.txt || true
-          fi
-
-      - name: Write run metadata
+      # Run tests (optimized) inside the tracker
+      - name: Emissions — tests
         run: |
-          {
-            echo "date=$(date -Is)"
-            echo "runner_os=${{ runner.os }}"
-            echo "runner_arch=${{ runner.arch }}"
-            echo "github_run_id=${{ github.run_id }}"
-            echo "github_sha=${{ github.sha }}"
-            echo "github_ref_name=${{ github.ref_name }}"
-            echo "environment=ubuntu-latest"
-          } > metrics/run_meta.txt
+          python tools/run_with_emissions.py --label tests --outdir metrics-optimized -- pytest -q
 
-      - name: Upload metrics artifact
+      - name: Upload metrics artifacts
         uses: actions/upload-artifact@v4
         with:
           name: metrics-optimized
-          path: metrics/
+          path: metrics-optimized/**
+
+      - name: Build mini report & publish to Summary
+        id: report
+        shell: bash
+        run: |
+          mkdir -p reports
+          INSTALL_KG=$(python - <<'PY'
+import json; d=json.load(open('metrics-optimized/summary_install.json')); print(d["emissions_kg"])
+PY
+)
+          TESTS_KG=$(python - <<'PY'
+import json; d=json.load(open('metrics-optimized/summary_tests.json')); print(d["emissions_kg"])
+PY
+)
+          TOTAL_KG=$(python - <<'PY'
+import json; a=json.load(open('metrics-optimized/summary_install.json'))["emissions_kg"]; b=json.load(open('metrics-optimized/summary_tests.json'))["emissions_kg"]; print(a+b)
+PY
+)
+          {
+            echo "# Emissions (Optimized) — $(date -u +%Y-%m-%dT%H:%MZ)"
+            echo
+            echo "| Phase | kg CO₂e | g CO₂e |"
+            echo "|-----:|--------:|-------:|"
+            printf "| Install | %.8f | %.3f |\n" "$INSTALL_KG" "$(echo "$INSTALL_KG * 1000" | bc -l)"
+            printf "| Tests   | %.8f | %.3f |\n" "$TESTS_KG" "$(echo "$TESTS_KG * 1000" | bc -l)"
+            printf "| **Total** | **%.8f** | **%.3f** |\n" "$TOTAL_KG" "$(echo "$TOTAL_KG * 1000" | bc -l)"
+          } | tee reports/green-devops_report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: green-devops-report
+          path: reports/green-devops_report.md
