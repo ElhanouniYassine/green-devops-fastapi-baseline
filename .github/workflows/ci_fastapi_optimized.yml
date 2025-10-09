@@ -56,18 +56,18 @@ jobs:
         run: |
           mkdir -p reports
           INSTALL_KG=$(python - <<'PY'
-import json; d=json.load(open('metrics-optimized/summary_install.json')); print(d["emissions_kg"])
-PY
-)
-          TESTS_KG=$(python - <<'PY'
-import json; d=json.load(open('metrics-optimized/summary_tests.json')); print(d["emissions_kg"])
-PY
-)
-          TOTAL_KG=$(python - <<'PY'
-import json; a=json.load(open('metrics-optimized/summary_install.json'))["emissions_kg"]; b=json.load(open('metrics-optimized/summary_tests.json'))["emissions_kg"]; print(a+b)
-PY
-)
-          {
+            import json; d=json.load(open('metrics-optimized/summary_install.json')); print(d["emissions_kg"])
+            PY
+            )
+                      TESTS_KG=$(python - <<'PY'
+            import json; d=json.load(open('metrics-optimized/summary_tests.json')); print(d["emissions_kg"])
+            PY
+            )
+                      TOTAL_KG=$(python - <<'PY'
+            import json; a=json.load(open('metrics-optimized/summary_install.json'))["emissions_kg"]; b=json.load(open('metrics-optimized/summary_tests.json'))["emissions_kg"]; print(a+b)
+            PY
+            )
+                      {
             echo "# Emissions (Optimized) — $(date -u +%Y-%m-%dT%H:%MZ)"
             echo
             echo "| Phase | kg CO₂e | g CO₂e |"
@@ -82,3 +82,18 @@ PY
         with:
           name: green-devops-report
           path: reports/green-devops_report.md
+
+
+      - name: Cache testmon DB
+        uses: actions/cache@v4
+        with:
+          path: .testmondata
+          key: ${{ runner.os }}-testmon-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-testmon-
+
+    # Emissions — tests (with selective execution)
+      - name: Emissions — tests
+        run: |
+          python tools/run_with_emissions.py --label tests --outdir metrics-optimized -- pytest -q --testmon
+
